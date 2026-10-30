@@ -2,7 +2,7 @@
 
 These public pages supply the existing course embeds. Their page and asset bytes remain unchanged by the release controls.
 
-Pull requests run the publication boundary tests and validate the public assets. Publishing uses the validated checkout from the same main-branch run. The deployment job receives only Pages publication and deployment identity permissions. Fork validation uses an isolated hosted runner.
+Pull requests run the publication boundary tests and validate the public assets. Publishing uses the validated checkout from the same main-branch run. The deployment job receives only Pages publication and deployment identity permissions. Validation uses GitHub’s free standard hosted runner for this public repository.
 
 The artifact includes the existing course pages, images, fonts, styles and scripts. Development tools, workflow sources, tests, hidden files and documentation stay outside it. Symbolic links, path traversal, oversized artifacts and recognised private credential formats stop publication.
 

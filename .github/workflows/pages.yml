@@ -16,7 +16,7 @@ concurrency:
 jobs:
   validate:
     name: Validate course listings
-    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && '["ubuntu-latest"]' || github.triggering_actor == 'kadirerk' && '["self-hosted","Linux","local-erkan"]' || github.triggering_actor == 'superBrock' && '["self-hosted","Linux","local-brock"]' || '["ubuntu-latest"]') }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
