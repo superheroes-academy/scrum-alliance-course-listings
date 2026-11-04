@@ -2,7 +2,9 @@
 import importlib.util
 from pathlib import Path
 import tempfile
+import tarfile
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location("build_pages", Path(__file__).resolve().parents[1] / "scripts/build-pages.py")
 pages = importlib.util.module_from_spec(spec)
@@ -34,6 +36,57 @@ class PublicationTests(unittest.TestCase):
         self.assertEqual(pages.build(self.root, self.output, names), sorted(names))
         for name in names:
             self.assertEqual((self.output / name).read_bytes(), (self.root / name).read_bytes())
+
+    def test_pages_archive_preserves_public_bytes_without_development_files(self):
+        self.put("images/logo.svg", "<svg/>")
+        self.put(".env", "synthetic private data")
+        names = ["CNAME", "cspo.html", "images/logo.svg", ".env"]
+        published = pages.build(self.root, self.output, names)
+        destination = Path(self.temp.name) / "artifact.tar"
+        pages.archive(self.output, destination)
+        with tarfile.open(destination) as artifact:
+            files = {item.name.removeprefix("./"): item for item in artifact if item.isfile()}
+            self.assertEqual(set(files), set(published) | {".nojekyll"})
+            for name in published:
+                self.assertEqual(artifact.extractfile(files[name]).read(), (self.root / name).read_bytes())
+            self.assertEqual(artifact.extractfile(files[".nojekyll"]).read(), b"")
+            self.assertTrue(all(item.isfile() or item.isdir() for item in artifact))
+
+    def test_archive_rejects_a_link_added_after_assembly(self):
+        pages.build(self.root, self.output, ["CNAME", "cspo.html"])
+        target = Path(self.temp.name) / "private.html"
+        target.write_text("synthetic private data")
+        (self.output / "late.html").symlink_to(target)
+        destination = Path(self.temp.name) / "artifact.tar"
+        with self.assertRaises(pages.PublicationError):
+            pages.archive(self.output, destination)
+        self.assertFalse(destination.exists())
+
+    def test_archive_preserves_existing_output_and_rejects_self_inclusion(self):
+        pages.build(self.root, self.output, ["CNAME", "cspo.html"])
+        destination = Path(self.temp.name) / "artifact.tar"
+        destination.write_bytes(b"synthetic retained archive")
+        with self.assertRaises(pages.PublicationError):
+            pages.archive(self.output, destination)
+        self.assertEqual(destination.read_bytes(), b"synthetic retained archive")
+        with self.assertRaises(pages.PublicationError):
+            pages.archive(self.output, self.output / "artifact.tar")
+
+    def test_archive_does_not_remove_a_file_created_by_another_process(self):
+        pages.build(self.root, self.output, ["CNAME", "cspo.html"])
+        destination = Path(self.temp.name).resolve() / "artifact.tar"
+        original = Path.open
+
+        def concurrent_open(path, *args, **kwargs):
+            if path == destination and args == ("xb",):
+                with original(path, "wb") as stream:
+                    stream.write(b"synthetic concurrent archive")
+            return original(path, *args, **kwargs)
+
+        with patch.object(Path, "open", concurrent_open):
+            with self.assertRaises(FileExistsError):
+                pages.archive(self.output, destination)
+        self.assertEqual(destination.read_bytes(), b"synthetic concurrent archive")
 
     def test_development_files_are_excluded(self):
         names = ["scripts/helper.py", "tests/test_helper.py", "docs/notes.md", ".env", ".github/workflows/pages.yml", ".vscode/settings.json"]
