@@ -31,11 +31,15 @@ jobs:
         run: python3 scripts/build-pages.py --check
       - name: Assemble the validated checkout
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-        run: python3 scripts/build-pages.py --output "$RUNNER_TEMP/course-pages-$GITHUB_SHA-$GITHUB_RUN_ID"
-      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa
+        run: python3 scripts/build-pages.py --output "$RUNNER_TEMP/course-pages-$GITHUB_SHA-$GITHUB_RUN_ID" --archive "$RUNNER_TEMP/artifact.tar"
+      - name: Upload the validated Pages artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         with:
-          path: ${{ runner.temp }}/course-pages-${{ github.sha }}-${{ github.run_id }}
+          name: github-pages
+          path: ${{ runner.temp }}/artifact.tar
+          retention-days: 1
+          if-no-files-found: error
 
   deploy:
     name: Publish validated course listings
