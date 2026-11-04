@@ -7,6 +7,7 @@ from pathlib import Path, PurePosixPath
 import re
 import shutil
 import subprocess
+import tarfile
 
 ROOT_FILES = {"CNAME", "favicon.ico", "favicon.svg", "robots.txt", "sitemap.xml"}
 ASSET_ROOTS = {"images", "fonts", "css", "js", "microcredentials"}
@@ -77,16 +78,45 @@ def build(root, output, names=None):
     return files
 
 
+def archive(output, destination):
+    """Package a fresh validated Pages directory as the required artifact.tar."""
+    output, destination = Path(output).resolve(), Path(destination)
+    destination = destination.parent.resolve() / destination.name
+    if (not output.is_dir() or destination.is_symlink() or destination.exists()
+            or destination.is_relative_to(output)):
+        raise PublicationError("Use a fresh archive outside the public output directory")
+    entries = sorted(output.rglob("*"))
+    for entry in entries:
+        if entry.is_symlink() or not (entry.is_file() or entry.is_dir()):
+            raise PublicationError("The Pages artifact contains an unsupported filesystem entry")
+    created = False
+    try:
+        with destination.open("xb") as stream:
+            created = True
+            with tarfile.open(fileobj=stream, mode="w", format=tarfile.GNU_FORMAT) as artifact:
+                for entry in entries:
+                    artifact.add(entry, arcname="./" + entry.relative_to(output).as_posix(), recursive=False)
+    except Exception:
+        if created:
+            destination.unlink(missing_ok=True)
+        raise
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--archive", type=Path)
     args = parser.parse_args()
     if bool(args.output) == bool(args.check):
         parser.error("Choose --check or --output")
+    if args.archive and not args.output:
+        parser.error("An archive requires a freshly assembled output directory")
     root = Path(__file__).resolve().parent.parent
     try:
         files = build(root, args.output) if args.output else validate(root)
+        if args.archive:
+            archive(args.output, args.archive)
         print(json.dumps({"public_files_verified": len(files), "development_files_excluded": True}))
     except (PublicationError, UnicodeError) as error:
         print(json.dumps({"publication_blocked": True, "reason": str(error)}))
